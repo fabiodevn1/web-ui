@@ -1,0 +1,26 @@
+[Unit]
+Description=Automação de Busca de Links de Imóveis
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=ftgk
+Group=ftgk
+WorkingDirectory=/home/ftgk/Documentos/GitHub/avalion-getlinks/web-ui
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/usr/bin/python3 /home/ftgk/Documentos/GitHub/avalion-getlinks/web-ui/automacao_completa.py
+Restart=always
+RestartSec=30
+StandardOutput=append:/var/log/automacao-imoveis/output.log
+StandardError=append:/var/log/automacao-imoveis/error.log
+
+# Limites de recursos
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Timeout para parada graciosa
+TimeoutStopSec=300
+
+[Install]
+WantedBy=multi-user.target
