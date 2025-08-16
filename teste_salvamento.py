@@ -29,10 +29,10 @@ async def teste_salvamento():
     }
     
     # IDs de teste (usando valores existentes no banco)
-    municipio_id = 1  # Ajuste conforme seu banco
-    estado_id = 1     # Ajuste conforme seu banco
-    plataforma_id = 1 # Ajuste conforme seu banco
-    tipo_busca_id = 1 # Ajuste conforme seu banco
+    municipio_id = 4106902  # Curitiba
+    estado_id = 41          # Paraná
+    plataforma_id = 3       # CHAVES-NA-MAO
+    tipo_busca_id = 1       # ALUGUEL
     
     logger.info(f"Testando salvamento com dados: {dados_teste}")
     

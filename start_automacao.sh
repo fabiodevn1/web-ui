@@ -70,9 +70,10 @@ read -p "Opção [1-5]: " opcao
 
 case $opcao in
     1)
-        echo -e "${GREEN}▶️ Executando em foreground...${NC}"
+        echo -e "${GREEN}▶️ Executando em foreground (modo headless)...${NC}"
         echo -e "${YELLOW}Pressione Ctrl+C para parar${NC}"
         echo ""
+        export HEADLESS_MODE=true
         source .venv/bin/activate && python3 automacao_completa.py
         ;;
     

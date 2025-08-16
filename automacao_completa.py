@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 import os
-from browser_use import Agent
+from browser_use import Agent, Browser, BrowserConfig
 from src.utils.llm_provider import get_llm_model
 from dotenv import load_dotenv
 from database import db
@@ -22,8 +22,9 @@ import sys
 load_dotenv()
 
 # Configurar logging
+log_level = os.environ.get('LOG_LEVEL', 'INFO')
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, log_level, logging.INFO),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('automacao_completa.log'),
@@ -172,53 +173,77 @@ class AutomacaoBuscaCompleta:
             }}
             """
             
-            # Executar busca com o Agent
-            agent = Agent(task=task, llm=self.llm)
+            # Executar busca com o Agent - com headless se for opção 1
+            headless = os.environ.get('HEADLESS_MODE', 'false').lower() == 'true'
+            
+            # Criar browser com configuração headless se necessário
+            config = BrowserConfig(headless=headless)
+            browser = Browser(config=config)
+            agent = Agent(task=task, llm=self.llm, browser=browser)
             result = await agent.run(max_steps=30)
             
-            # Processar resultado
-            logger.debug(f"Resultado do agent: {result}")
+            # Processar resultado - o Agent retorna um AgentHistoryList
+            logger.info(f"Processando resultado do Agent...")
             
-            # Tentar extrair do resultado direto
             if result:
-                resultado_str = str(result)
-                
-                # Procurar por JSON no resultado
-                start = resultado_str.find('{')
-                end = resultado_str.rfind('}') + 1
-                
-                if start != -1 and end > start:
-                    try:
-                        json_str = resultado_str[start:end]
-                        dados = json.loads(json_str)
+                # Verificar se a tarefa foi concluída com sucesso (são métodos, não propriedades!)
+                if result.is_done() and result.is_successful():
+                    # Primeiro tentar do final_result que já vem formatado
+                    final = result.final_result()
+                    if final:
+                        logger.info(f"Resultado final obtido: {type(final)}")
                         
-                        # Verificar se tem os campos necessários
-                        if dados.get('link'):
-                            logger.info(f"✅ Link encontrado: {dados.get('link')}")
-                            return dados
-                    except json.JSONDecodeError:
-                        pass
-                
-                # Tentar extrair de all_results se existir
-                if hasattr(result, 'all_results'):
-                    for action in result.all_results:
-                        if hasattr(action, 'extracted_content') and action.extracted_content:
-                            content = str(action.extracted_content)
-                            
-                            # Extrair JSON
-                            start = content.find('{')
-                            end = content.rfind('}') + 1
-                            
-                            if start != -1 and end > start:
-                                try:
-                                    json_str = content[start:end]
-                                    dados = json.loads(json_str)
-                                    
-                                    if dados.get('link'):
-                                        logger.info(f"✅ Link encontrado: {dados.get('link')}")
-                                        return dados
-                                except json.JSONDecodeError:
-                                    pass
+                        # Se for string, fazer parse (o mais comum)
+                        if isinstance(final, str):
+                            try:
+                                # Tentar parse direto primeiro
+                                dados = json.loads(final)
+                                if dados.get('link'):
+                                    logger.info(f"✅ Link encontrado: {dados.get('link')}")
+                                    return dados
+                            except json.JSONDecodeError:
+                                # Tentar extrair JSON da string
+                                start = final.find('{')
+                                end = final.rfind('}') + 1
+                                if start != -1 and end > start:
+                                    try:
+                                        json_str = final[start:end]
+                                        dados = json.loads(json_str)
+                                        if dados.get('link'):
+                                            logger.info(f"✅ Link encontrado: {dados.get('link')}")
+                                            return dados
+                                    except json.JSONDecodeError as e:
+                                        logger.debug(f"Erro ao fazer parse do resultado final: {e}")
+                        # Se já for dict, usar diretamente
+                        elif isinstance(final, dict):
+                            if final.get('link'):
+                                logger.info(f"✅ Link encontrado: {final.get('link')}")
+                                return final
+                    
+                    # Se não conseguiu do final_result, tentar do extracted_content
+                    content = result.extracted_content()
+                    if content:
+                        logger.debug(f"Conteúdo extraído (tipo: {type(content)}): {content}")
+                        
+                        # Se for lista, procurar o JSON no último item
+                        if isinstance(content, list):
+                            for item in reversed(content):
+                                if isinstance(item, str) and '{' in item:
+                                    start = item.find('{')
+                                    end = item.rfind('}') + 1
+                                    if start != -1 and end > start:
+                                        try:
+                                            json_str = item[start:end]
+                                            dados = json.loads(json_str)
+                                            if dados.get('link'):
+                                                logger.info(f"✅ Link encontrado: {dados.get('link')}")
+                                                return dados
+                                        except json.JSONDecodeError:
+                                            continue
+                else:
+                    logger.warning(f"Agent não completou a tarefa com sucesso. is_done={result.is_done()}, is_successful={result.is_successful()}")
+                    if result.errors:
+                        logger.error(f"Erros: {result.errors}")
             
             logger.warning(f"⚠️ Não foi possível encontrar link para {plataforma}")
             return None
